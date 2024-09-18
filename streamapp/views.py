@@ -69,8 +69,13 @@ def delete_video(request, video_id):
 
 def search_subtitles(request):
     query = request.GET.get('q', '')
-    if query:
-        matching_subtitles = Subtitle.objects.filter(phrase__icontains=query)
+    video_id = request.GET.get('video_id', '')
+
+    if query and video_id:
+        matching_subtitles = Subtitle.objects.filter(
+            video_id=video_id,
+            phrase__icontains=query
+        )
 
         # To prevent duplicate subtitles, for e.g. US and UK based subtitles are mostly the same.
         unique_item = set()

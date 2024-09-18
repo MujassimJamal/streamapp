@@ -115,7 +115,7 @@
                 })
                 .then(html => {
                     document.body.innerHTML = html;
-                    addSearchInputListener();
+                    addSearchInputListener(videoId);
                     addSubmitListener();
 
                 })
@@ -170,10 +170,10 @@
             return (+hours) * 3600 + (+minutes) * 60 + (+seconds) + (+ms) / 1000;
         }
 
-        function addSearchInputListener() {
+        function addSearchInputListener(videoId) {
             document.getElementById('search-input').addEventListener('input', function () {
                 const query = this.value;
-                fetch(`/stream/search/?q=${encodeURIComponent(query)}`)
+                fetch(`/stream/search/?q=${encodeURIComponent(query)}&video_id=${videoId}`)
                     .then(response => response.json())
                     .then(data => {
                         const resultsList = document.getElementById('search-results');
