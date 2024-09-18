@@ -1,0 +1,201 @@
+{% load custom_filters %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Video Upload</title>
+</head>
+
+<body>
+    <h1>Video Upload Portal</h1>
+
+    <!-- Video Upload Form -->
+    <div id="upload_video">
+        <!-- <h3>Upload a Video</h3> -->
+        <form id="video-upload-form" action="{% url 'upload_video' %}" method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {% for field in form %}
+            <p>Please upload a video. <span>{{ field.help_text }}</span></p>
+            {{ field }}
+            {% endfor %}
+            <br>
+            <div id="upload-controls" style="display: inline-table; vertical-align: middle;">
+                <div style="display: table-cell; padding-right: 15px;">
+                    <button id="submit-btn" type="submit" style="margin-top: 20px; border-radius: 5px;">Upload</button>
+                </div>
+                <div style="display: table-cell; vertical-align: middle;">
+                    <span id="upload-message" style="display: none; color: red; margin-top: 20px;">Uploading, Please
+                        wait...</span>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Show/Play Video -->
+    <div id="video-frame" style="margin-top: 60px; display: inline-table;">
+        {% if vs_visibility %}
+        <div style="display: table-cell;">
+            <video autoplay controls id="video-source" width="400" height="250">
+                <source src="{{ video.video_path.url }}" type="video/mp4" />
+                {% for track_number in track_numbers %}
+                <track src="{{ tmp_dir }}/{{ tracks|index:track_number }}" kind="subtitles" srclang="en"
+                    label="{{ tracks|index:track_number|slice:':-4' }}" {% if forloop.first %}default{% endif %} />
+                {% endfor %}
+                Your browser does not support the video tag.
+            </video>
+        </div>
+        {% endif %}
+        <div style="display: table-cell; vertical-align: top; padding-left: 50px;">
+            <input type="text" id="search-input" placeholder="Search a phrase..." {%if not vs_visibility%}hidden{%endif%} />
+            <div id="search-results" style="margin-top: 10px;"></div>
+        </div>
+    </div>
+
+    <!-- List of Uploaded Videos -->
+    <div id="list_videos" style="margin-top: 50px;">
+        <h3>Uploaded Videos</h3>
+        <table border="1" style="width: 27%; border-collapse: collapse; text-align: left;">
+            <thead>
+                <tr>
+                    <th>Thumbnail</th>
+                    <th>Name (Click on the name to download it.)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for video in videos %}
+                <tr>
+                    <td>
+                        <img src="/media/{{ video.thumbnail_path }}" alt="Thumbnail" width="100">
+                    </td>
+                    <td>
+                        <a href="{{ video.video_path.url }}" target="_blank" style="margin-left: 5px;">
+                            {{ video.filename }}
+                        </a>
+                        <button id="{{video.id}}" style="float: right; margin-right: 5px;"
+                            onclick="deleteVideo(this.id)">Delete</button>
+                        <button id="{{ video.id }}" style="float: right; margin-right: 5px;"
+                            onclick="fetchVideo(this.id)">Play</button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="2">No videos uploaded yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Script -->
+    <script>
+        function addSubmitListener() {
+            document.getElementById('video-upload-form').addEventListener('submit', function () {
+                document.getElementById('upload-message').style.display = 'block';
+                document.getElementById('submit-btn').disabled = true;
+            });
+        }
+        addSubmitListener();
+
+        function fetchVideo(videoId) {
+            fetch(`/stream/fetch/${videoId}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then(response => {
+                    if (response.ok) {
+                        return response.text();
+                    }
+                    throw new Error('Failed to fetch video.');
+                })
+                .then(html => {
+                    document.body.innerHTML = html;
+                    addSearchInputListener();
+                    addSubmitListener();
+
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+        function deleteVideo(videoId) {
+            fetch(`/stream/delete/${videoId}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json'
+                },
+            })
+                .then(response => {
+                    if (response.ok) {
+                        return response.text();
+                    }
+                    throw new Error('Failed to fetch video.');
+                })
+                .then(html => {
+                    document.body.innerHTML = html;
+                    addSubmitListener();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+        function parseTime(timeString) {
+            const timeParts = timeString.split(':');
+
+            let hours, minutes, seconds, ms;
+
+            if (timeParts.length === 3) {
+                [hours, minutes, seconds] = timeParts;
+            } else if (timeParts.length === 2) {
+                hours = '0';
+                [minutes, seconds] = timeParts;
+            } else {
+                throw new Error('Invalid time format');
+            }
+
+            if (seconds.includes('.')) {
+                [seconds, ms] = seconds.split('.');
+            } else {
+                ms = '0';
+            }
+
+            return (+hours) * 3600 + (+minutes) * 60 + (+seconds) + (+ms) / 1000;
+        }
+
+        function addSearchInputListener() {
+            document.getElementById('search-input').addEventListener('input', function () {
+                const query = this.value;
+                fetch(`/stream/search/?q=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const resultsList = document.getElementById('search-results');
+                        resultsList.innerHTML = '';
+                        data.results.forEach(subtitle => {
+                            const linkItem = document.createElement('a');
+                            linkItem.href = '#';
+                            linkItem.textContent = subtitle.start_time + ": " + subtitle.phrase;
+                            linkItem.dataset.startTime = subtitle.start_time;
+
+                            linkItem.addEventListener('click', function (event) {
+                                event.preventDefault();
+                                const videoElement = document.getElementById('video-source');
+                                videoElement.currentTime = parseTime(this.dataset.startTime);
+                            });
+                            const br = document.createElement('br')
+                            resultsList.appendChild(linkItem).appendChild(br);
+                        });
+                    });
+            });
+        }
+    </script>
+</body>
+
+</html>
